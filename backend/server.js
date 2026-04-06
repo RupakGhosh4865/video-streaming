@@ -1,12 +1,17 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const morgan = require('morgan');
+const rateLimit = require('express-rate-limit');
 const http = require('http');
 const path = require('path');
 const { Server } = require('socket.io');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const videoRoutes = require('./routes/videoRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 // Connect to Database
 connectDB();
@@ -21,16 +26,58 @@ const io = new Server(server, {
 });
 
 // Middleware
-app.use(cors());
+app.use(helmet());
+// Allow helmet to serve media correctly
+app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
+app.use(compression());
+app.use(morgan('dev'));
+app.use(cors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173', 
+    credentials: true
+}));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Rate Limiting
+const globalLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+    message: 'Too many requests from this IP, please try again after 15 minutes'
+});
+app.use('/api/', globalLimiter);
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    max: 10, 
+    message: 'Too many authentication attempts, please try again after 15 minutes'
+});
+app.use('/api/auth', authLimiter);
 
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/videos', videoRoutes);
+app.use('/api/admin', adminRoutes);
+
+app.get('/api/health', (req, res) => {
+    res.json({
+        success: true,
+        status: 'UP',
+        dbState: require('mongoose').connection.readyState
+    });
+});
 
 app.get('/', (req, res) => {
     res.send('VideoVault API is running...');
+});
+
+// Centralized Error Handler
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || 'Server Error',
+        code: err.code || 'INTERNAL_ERROR'
+    });
 });
 
 const jwt = require('jsonwebtoken');

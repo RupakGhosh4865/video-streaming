@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const upload = require('../middleware/uploadMiddleware');
 const { protect, roleGuard } = require('../middleware/authMiddleware');
-const { uploadVideo, getVideos } = require('../controllers/videoController');
+const { protectQuery } = require('../middleware/authQueryMiddleware');
+const { uploadVideo, getVideos, getVideoById, streamVideo } = require('../controllers/videoController');
 
 // Define route
 router.post(
@@ -22,5 +23,7 @@ router.post(
 );
 
 router.get('/', protect, getVideos);
+router.get('/:id', protect, getVideoById);
+router.get('/:id/stream', protectQuery, streamVideo);
 
 module.exports = router;

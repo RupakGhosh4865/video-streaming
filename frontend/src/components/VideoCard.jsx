@@ -1,11 +1,15 @@
-import React from 'react';
 import { motion } from 'framer-motion';
-import { Video, HardDrive, Calendar } from 'lucide-react';
+import { Video, HardDrive, Calendar, PlayCircle, Link as LinkIcon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import StatusBadge from './StatusBadge';
+import { useAuth } from '../context/AuthContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const VideoCard = ({ video }) => {
+    const navigate = useNavigate();
+    const { user } = useAuth();
 
     const formatFileSize = (bytes) => {
         if (!bytes) return '0 Bytes';
@@ -21,6 +25,12 @@ const VideoCard = ({ video }) => {
             day: 'numeric',
             year: 'numeric'
         });
+    };
+
+    const handleCopyLink = () => {
+        const streamUrl = `${API_URL}/api/videos/${video._id}/stream?token=${localStorage.getItem('token')}`;
+        navigator.clipboard.writeText(streamUrl);
+        toast.success('Stream link copied to clipboard!');
     };
 
     return (
@@ -91,6 +101,31 @@ const VideoCard = ({ video }) => {
                         </div>
                     </div>
                 )}
+
+                {/* Actions */}
+                <div className="mt-6 flex items-center gap-3 w-full">
+                    <button 
+                        onClick={() => navigate(`/video/${video._id}`)}
+                        disabled={video.status !== 'safe'}
+                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium transition-all
+                            ${video.status === 'safe' 
+                                ? 'bg-primary hover:bg-primary-dark text-white' 
+                                : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'}`
+                        }
+                    >
+                        <PlayCircle className="w-4 h-4" /> Watch
+                    </button>
+                    
+                    {user?.role !== 'viewer' && video.status === 'safe' && (
+                        <button 
+                            onClick={handleCopyLink}
+                            title="Copy Stream Link"
+                            className="p-2.5 bg-slate-800 hover:bg-slate-700 border border-white/5 rounded-lg transition-colors text-text-secondary hover:text-white"
+                        >
+                            <LinkIcon className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
             </div>
         </motion.div>
     );

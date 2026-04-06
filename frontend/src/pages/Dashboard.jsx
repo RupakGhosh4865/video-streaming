@@ -1,18 +1,18 @@
-import React, { useEffect, useState } from 'react';
-import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { LayoutDashboard, LogOut, User, Shield, Video, UploadCloud, Loader2 } from 'lucide-react';
+import { LayoutDashboard, LogOut, User, Shield, Video, UploadCloud, Loader2, Search, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getVideos } from '../services/videoService';
 import { useSocket } from '../hooks/useSocket';
+import { useRole } from '../hooks/useRole';
 import VideoCard from '../components/VideoCard';
 
 const Dashboard = () => {
     const { user, logout } = useAuth();
-    const navigate = useNavigate();
     const [videos, setVideos] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [searchQuery, setSearchQuery] = useState('');
+    const { isViewer, isAdmin } = useRole();
     
     // Connect to socket with token
     const token = localStorage.getItem('token');
@@ -20,8 +20,9 @@ const Dashboard = () => {
 
     useEffect(() => {
         const fetchVideos = async () => {
+            setLoading(true);
             try {
-                const data = await getVideos();
+                const data = await getVideos(statusFilter);
                 setVideos(data);
             } catch (error) {
                 toast.error('Failed to load videos');
@@ -30,7 +31,7 @@ const Dashboard = () => {
             }
         };
         fetchVideos();
-    }, []);
+    }, [statusFilter]);
 
     useEffect(() => {
         // Handle incoming processing events
@@ -59,9 +60,7 @@ const Dashboard = () => {
             }
             
             setVideos(prev => prev.map(v => 
-                v._id === data.videoId 
-                    ? { ...data.video } // replace with updated video data from server
-                    : v
+                v._id === data.videoId ? { ...v, status: data.status, processingProgress: 100 } : v
             ));
         };
 
@@ -76,6 +75,11 @@ const Dashboard = () => {
         };
     }, [on, off]);
 
+    // Prepare Filtered List internally for rendering
+    const filteredVideos = videos.filter(video => 
+        video.title.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     return (
         <div className="min-h-screen bg-bg-dark text-text-primary flex flex-col">
             {/* Navigation */}
@@ -88,6 +92,17 @@ const Dashboard = () => {
                 </div>
 
                 <div className="flex items-center gap-6">
+                    {isAdmin && (
+                        <button
+                            onClick={() => navigate('/admin')}
+                            className="flex items-center gap-2 p-2 hover:bg-white/5 rounded-lg text-purple-400 transition-colors"
+                            title="Admin Panel"
+                        >
+                            <Settings className="w-5 h-5" />
+                            <span className="hidden md:inline text-sm font-semibold">Admin</span>
+                        </button>
+                    )}
+                    
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
                             <User className="w-4 h-4 text-primary" />
@@ -120,7 +135,7 @@ const Dashboard = () => {
                         <p className="text-text-secondary">Manage and monitor your video content.</p>
                     </div>
                     
-                    {user?.role !== 'viewer' && (
+                    {!isViewer && (
                         <button
                             onClick={() => navigate('/upload')}
                             className="bg-primary hover:bg-primary-dark px-6 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 shadow-lg shadow-primary/20 shrink-0"
@@ -130,6 +145,38 @@ const Dashboard = () => {
                         </button>
                     )}
                 </header>
+
+                {/* Filters and Search */}
+                <div className="mb-8 flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-900 border border-white/5 p-2 rounded-2xl">
+                    {/* Status Tabs */}
+                    <div className="flex w-full md:w-auto items-center gap-2 overflow-x-auto scroolbar-hide">
+                        {['all', 'safe', 'flagged', 'processing'].map(status => (
+                            <button
+                                key={status}
+                                onClick={() => setStatusFilter(status)}
+                                className={`px-4 py-2 rounded-xl text-sm font-medium capitalize transition-all whitespace-nowrap
+                                    ${statusFilter === status 
+                                        ? 'bg-slate-800 text-white shadow-sm' 
+                                        : 'text-text-secondary hover:text-white hover:bg-white/5'}`
+                                }
+                            >
+                                {status}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Search Input */}
+                    <div className="relative w-full md:w-64 shrink-0">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-secondary" />
+                        <input 
+                            type="text" 
+                            placeholder="Search videos..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-black/50 border border-white/10 rounded-xl py-2 pl-9 pr-4 text-sm focus:ring-1 focus:ring-primary focus:border-transparent outline-none transition-all placeholder:text-slate-600"
+                        />
+                    </div>
+                </div>
 
                 {loading ? (
                     <div className="flex items-center justify-center flex-grow">
@@ -144,7 +191,7 @@ const Dashboard = () => {
                         <p className="text-text-secondary max-w-sm mb-8">
                             Get started by uploading your first video.
                         </p>
-                        {user?.role !== 'viewer' && (
+                        {!isViewer && (
                              <button
                                 onClick={() => navigate('/upload')}
                                 className="bg-primary hover:bg-primary-dark px-8 py-3 rounded-xl font-semibold transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
@@ -154,9 +201,28 @@ const Dashboard = () => {
                             </button>
                         )}
                     </div>
+                ) : filteredVideos.length === 0 ? (
+                    <div className="glass rounded-3xl p-12 border border-white/5 flex flex-col items-center justify-center text-center flex-grow mt-4">
+                        <div className="bg-white/5 p-6 rounded-full mb-6 relative">
+                             <Search className="w-12 h-12 text-slate-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                             <Video className="w-12 h-12 text-primary/10" />
+                        </div>
+                        <h3 className="text-xl font-semibold mb-2">No results found</h3>
+                        <p className="text-text-secondary max-w-sm mb-4">
+                            Try adjusting your search or filters to find what you're looking for.
+                        </p>
+                        {(searchQuery || statusFilter !== 'all') && (
+                            <button
+                                onClick={() => { setSearchQuery(''); setStatusFilter('all'); }}
+                                className="text-primary hover:text-primary-dark font-medium transition-colors"
+                            >
+                                Clear all filters
+                            </button>
+                        )}
+                    </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {videos.map((video) => (
+                        {filteredVideos.map((video) => (
                             <VideoCard key={video._id} video={video} />
                         ))}
                     </div>

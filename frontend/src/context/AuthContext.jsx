@@ -11,14 +11,30 @@ export const AuthProvider = ({ children }) => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
 
     useEffect(() => {
+        // Axios Interceptor for 401 responses
+        const interceptor = authService.interceptors.response.use(
+            (response) => response,
+            (error) => {
+                if (error.response?.status === 401 && !error.config.url.includes('/auth/login')) {
+                    logout();
+                }
+                return Promise.reject(error);
+            }
+        );
+
         const storedUser = localStorage.getItem('user');
         const storedToken = localStorage.getItem('token');
         if (storedUser && storedToken) {
             setUser(JSON.parse(storedUser));
             setIsAuthenticated(true);
+            authService.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
         }
         setLoading(false);
-    }, []);
+
+        return () => {
+             authService.interceptors.response.eject(interceptor);
+        };
+    }, [user]);
 
     const register = async (userData) => {
         const data = await registerApi(userData);

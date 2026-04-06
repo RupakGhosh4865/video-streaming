@@ -21,9 +21,18 @@ export const uploadVideo = async (formData, onProgress) => {
     }
 };
 
-export const getVideos = async () => {
+export const getVideos = async (statusFilter = 'all') => {
     try {
-        const response = await authService.get('/videos');
+        const response = await authService.get(`/videos?status=${statusFilter}`);
+        return response.data;
+    } catch (error) {
+        throw error;
+    }
+};
+
+export const getVideoById = async (id) => {
+    try {
+        const response = await authService.get(`/videos/${id}`);
         return response.data;
     } catch (error) {
         throw error;
