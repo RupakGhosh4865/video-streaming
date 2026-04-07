@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const RAW_API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Remove any trailing slashes from the base URL
+const CLEAN_API_URL = RAW_API_URL.replace(/\/+$/, '');
+export const API_URL = CLEAN_API_URL;
 
 const authService = axios.create({
     baseURL: API_URL.endsWith('/api') ? API_URL : `${API_URL}/api`,
