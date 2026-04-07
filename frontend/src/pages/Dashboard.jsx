@@ -1,4 +1,7 @@
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { motion } from 'framer-motion';
 import { LayoutDashboard, LogOut, User, Shield, Video, UploadCloud, Loader2, Search, Settings } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getVideos } from '../services/videoService';
@@ -13,6 +16,7 @@ const Dashboard = () => {
     const [statusFilter, setStatusFilter] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
     const { isViewer, isAdmin } = useRole();
+    const navigate = useNavigate();
     
     // Connect to socket with token
     const token = localStorage.getItem('token');
@@ -74,6 +78,24 @@ const Dashboard = () => {
             off('processing:complete', handleComplete);
         };
     }, [on, off]);
+
+    // Background polling fallback — syncs videos from DB if any are currently processing
+    useEffect(() => {
+        const hasProcessing = videos.some(v => v.status === 'processing');
+        if (!hasProcessing) return;
+
+        const interval = setInterval(async () => {
+            try {
+                const data = await getVideos(statusFilter);
+                // Update local state if DB state has changed (e.g. status safe/100%)
+                setVideos(prev => JSON.stringify(prev) === JSON.stringify(data) ? prev : data);
+            } catch (err) {
+                console.error('Processing sync failed:', err);
+            }
+        }, 10000); // 10s sync
+
+        return () => clearInterval(interval);
+    }, [videos, statusFilter]);
 
     // Prepare Filtered List internally for rendering
     const filteredVideos = videos.filter(video => 

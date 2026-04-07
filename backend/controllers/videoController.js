@@ -1,7 +1,6 @@
-const fs = require('fs');
-const path = require('path');
 const Video = require('../models/Video');
 const { processVideo } = require('../utils/videoProcessor');
+const cloudinary = require('../config/cloudinary');
 
 // @desc    Upload a new video
 // @route   POST /api/videos/upload
@@ -18,28 +17,34 @@ const uploadVideo = async (req, res) => {
             return res.status(400).json({ message: 'Video title is required' });
         }
 
-        // The file is already saved by multer
+        // Create the video document immediately so we have an ID for Cloudinary folder
         const newVideo = await Video.create({
             title,
             description,
-            filename: req.file.filename,
+            filename: req.file.originalname,
             originalName: req.file.originalname,
             size: req.file.size,
             mimeType: req.file.mimetype,
             ownerId: req.user._id,
             orgId: req.user.orgId || '',
-            streamUrl: `/uploads/${req.user._id}/${req.file.filename}`, // Relative path accessible via static serving
+            status: 'processing',
         });
 
         const io = req.app.get('io');
 
-        // Trigger processing asynchronously (do not await)
-        processVideo(newVideo._id, req.user._id, io).catch(err => {
-            console.error('Background processing error:', err);
+        // Trigger Cloudinary processing asynchronously — pass the memory buffer
+        processVideo(
+            newVideo._id,
+            req.user._id,
+            req.file.buffer,       // In-memory buffer (multer memoryStorage)
+            req.file.originalname,
+            io
+        ).catch(err => {
+            console.error('Background Cloudinary processing error:', err);
         });
 
         res.status(201).json({
-            message: 'Video upload initiated',
+            message: 'Video upload initiated. Processing in background...',
             video: newVideo,
         });
     } catch (error) {
@@ -77,7 +82,7 @@ const getVideoById = async (req, res) => {
             return res.status(404).json({ message: 'Video not found' });
         }
 
-        // Access control: Make sure user owns video or belongs to same org
+        // Access control: user owns video or belongs to same org
         if (video.ownerId.toString() !== req.user._id.toString() && 
             (!video.orgId || video.orgId !== req.user.orgId)) {
             return res.status(403).json({ message: 'Not authorized to access this video' });
@@ -90,9 +95,9 @@ const getVideoById = async (req, res) => {
     }
 };
 
-// @desc    Stream video file securely
+// @desc    Stream / get secure Cloudinary URL for a video
 // @route   GET /api/videos/:id/stream
-// @access  Private (uses protectQuery)
+// @access  Private
 const streamVideo = async (req, res) => {
     try {
         const video = await Video.findById(req.params.id);
@@ -101,63 +106,47 @@ const streamVideo = async (req, res) => {
             return res.status(404).json({ message: 'Video not found' });
         }
 
-        // 1. Authorization Check
+        // Authorization check
         if (video.ownerId.toString() !== req.user._id.toString() && 
             (!video.orgId || video.orgId !== req.user.orgId)) {
             return res.status(403).json({ message: 'Not authorized to stream this video' });
         }
 
-        // 2. Status Check
+        // Status check
         if (video.status !== 'safe') {
             return res.status(403).json({ message: 'Video is flagged or still processing' });
         }
 
-        // 3. Resolve Path
-        const videoPath = path.join(__dirname, '..', 'uploads', video.ownerId.toString(), video.filename);
-        
-        if (!fs.existsSync(videoPath)) {
-            return res.status(404).json({ message: 'Video file missing on server' });
+        if (!video.streamUrl) {
+            return res.status(404).json({ message: 'Video stream URL not available yet' });
         }
 
-        const stat = fs.statSync(videoPath);
-        const fileSize = stat.size;
-        const range = req.headers.range;
-
-        // 4. Stream Logic
-        if (range) {
-            const parts = range.replace(/bytes=/, "").split("-");
-            const start = parseInt(parts[0], 10);
-            const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-            if(start >= fileSize) {
-                res.status(416).send('Requested range not satisfiable\n'+start+' >= '+fileSize);
-                return;
-            }
-
-            const chunksize = (end - start) + 1;
-            const file = fs.createReadStream(videoPath, { start, end });
-            const head = {
-                'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-                'Accept-Ranges': 'bytes',
-                'Content-Length': chunksize,
-                'Content-Type': video.mimeType,
-            };
-
-            res.writeHead(206, head);
-            file.pipe(res);
-        } else {
-            const head = {
-                'Content-Length': fileSize,
-                'Content-Type': video.mimeType,
-            };
-            res.writeHead(200, head);
-            fs.createReadStream(videoPath).pipe(res);
-        }
+        // Return the Cloudinary URL — frontend plays this directly
+        res.json({ streamUrl: video.streamUrl });
     } catch (error) {
-        console.error('Error streaming video:', error);
-        if (!res.headersSent) {
-            res.status(500).json({ message: 'Server error during video streaming' });
+        console.error('Error retrieving video stream URL:', error);
+        res.status(500).json({ message: 'Server error retrieving stream URL' });
+    }
+};
+
+// @desc    Delete a video (Admin)
+// @route   DELETE /api/admin/videos/:id
+// @access  Admin
+const deleteVideo = async (req, res) => {
+    try {
+        const video = await Video.findById(req.params.id);
+        if (!video) return res.status(404).json({ message: 'Video not found' });
+
+        // Delete from Cloudinary if it was uploaded there
+        if (video.cloudinaryId) {
+            await cloudinary.uploader.destroy(video.cloudinaryId, { resource_type: 'video' });
         }
+
+        await video.deleteOne();
+        res.json({ message: 'Video deleted successfully' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error deleting video' });
     }
 };
 
@@ -166,4 +155,5 @@ module.exports = {
     getVideos,
     getVideoById,
     streamVideo,
+    deleteVideo,
 };

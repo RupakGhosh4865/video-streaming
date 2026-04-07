@@ -1,4 +1,15 @@
 require('dotenv').config();
+
+// Global safety net — prevent background async errors from crashing the server
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️  Unhandled Rejection at:', promise, 'reason:', reason);
+    // Do NOT exit — just log it. Nodemon will restart on file changes.
+});
+process.on('uncaughtException', (err) => {
+    console.error('⚠️  Uncaught Exception:', err.message);
+    // Do NOT exit — keeps server alive for non-critical background errors
+});
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');

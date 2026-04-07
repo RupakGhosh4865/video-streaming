@@ -1,83 +1,133 @@
-const ffmpeg = require('fluent-ffmpeg');
-const path = require('path');
+const cloudinary = require('../config/cloudinary');
 const Video = require('../models/Video');
+const { Readable } = require('stream');
 
-const processVideo = async (videoId, ownerId, io) => {
+/**
+ * Converts a Buffer to a Node.js Readable stream
+ */
+const bufferToStream = (buffer) => {
+    return Readable.from(buffer);
+};
+
+/**
+ * Processes a video by uploading it to Cloudinary.
+ * Persists progress to the database to ensure UI consistency.
+ */
+const processVideo = async (videoId, ownerId, fileBuffer, originalName, io) => {
+    let video;
     try {
-        const video = await Video.findById(videoId);
-        if (!video) throw new Error('Video not found');
+        video = await Video.findById(videoId);
+        if (!video) throw new Error('Video not found in database');
 
-        const videoPath = path.join(__dirname, '..', 'uploads', ownerId.toString(), video.filename);
-        const uploadDir = path.dirname(videoPath);
+        const emitAndSave = async (progress, step) => {
+            console.log(`[Video ${videoId}] ${step} (${progress}%)`);
+            video.processingProgress = progress;
+            video.processingStep = step;
+            await video.save();
+            
+            if (io) {
+                io.to(ownerId.toString()).emit('processing:progress', {
+                    videoId,
+                    progress,
+                    step,
+                });
+            }
+        };
 
         // Step 1: Initialize
-        io.to(ownerId.toString()).emit('processing:start', { videoId, progress: 0, step: 'Initializing...' });
         video.status = 'processing';
-        await video.save();
+        await emitAndSave(5, 'Initializing Cloudinary upload...');
 
-        // Step 2: Extract Metadata
-        io.to(ownerId.toString()).emit('processing:progress', { videoId, progress: 20, step: 'Extracting metadata...' });
-        const metadata = await new Promise((resolve, reject) => {
-            ffmpeg.ffprobe(videoPath, (err, metadata) => {
-                if (err) reject(err);
-                resolve(metadata);
+        // Step 2: Upload to Cloudinary via stream
+        // We add a timeout safety net
+        const uploadResult = await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('Cloudinary upload timed out after 5 minutes'));
+            }, 5 * 60 * 1000);
+
+            const uploadStream = cloudinary.uploader.upload_stream(
+                {
+                    resource_type: 'video',
+                    folder: `videovault/${ownerId}`,
+                    public_id: `${videoId}`,
+                    eager: [{ format: 'mp4', quality: 'auto' }],
+                    eager_async: true,
+                },
+                (error, result) => {
+                    clearTimeout(timeout);
+                    if (error) return reject(error);
+                    resolve(result);
+                }
+            );
+
+            // Handle stream-level errors explicitly
+            uploadStream.on('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
             });
+
+            const readableStream = bufferToStream(fileBuffer);
+            readableStream.on('error', (err) => {
+                clearTimeout(timeout);
+                reject(err);
+            });
+
+            readableStream.pipe(uploadStream);
         });
 
-        const format = metadata.format;
-        const stream = metadata.streams.find(s => s.codec_type === 'video');
-        
-        video.duration = format.duration;
-        video.resolution = stream ? `${stream.width}x${stream.height}` : 'unknown';
-        video.codec = stream ? stream.codec_name : 'unknown';
+        await emitAndSave(70, 'Extracting metadata and generating thumbnails...');
 
-        // Step 3: Extract Screenshots
-        io.to(ownerId.toString()).emit('processing:progress', { videoId, progress: 40, step: 'Extracting thumbnails...' });
-        const thumbnails = await new Promise((resolve, reject) => {
-            let generatedFiles = [];
-            ffmpeg(videoPath)
-                .on('filenames', (filenames) => {
-                    generatedFiles = filenames;
-                })
-                .on('end', () => {
-                    resolve(generatedFiles);
-                })
-                .on('error', (err) => {
-                    reject(err);
-                })
-                .screenshots({
-                    count: 5,
-                    folder: uploadDir,
-                    filename: `${videoId}-thumbnail-%i.png`,
-                });
+        // Step 3: Extract metadata and generate thumbnail
+        const duration = uploadResult.duration || 0;
+        const resolution = uploadResult.width && uploadResult.height
+            ? `${uploadResult.width}x${uploadResult.height}`
+            : 'unknown';
+
+        const thumbnailUrl = cloudinary.url(uploadResult.public_id, {
+            resource_type: 'video',
+            format: 'jpg',
+            transformation: [{ start_offset: '1' }],
         });
 
-        video.thumbnails = thumbnails.map(thumb => `/uploads/${ownerId}/${thumb}`);
-        io.to(ownerId.toString()).emit('processing:progress', { videoId, progress: 60, step: 'Running sensitivity analysis...' });
+        // Step 4: Finalize
+        await emitAndSave(95, 'Finalizing video entry...');
 
-        // Step 4: Simulate Analysis
-        await new Promise(resolve => setTimeout(resolve, 700)); // 700ms delay
-        const isSafe = Math.random() > 0.2; // 80% chance of being safe
-        video.status = isSafe ? 'safe' : 'flagged';
-        io.to(ownerId.toString()).emit('processing:progress', { videoId, progress: 80, step: 'Finalizing database records...' });
-
-        // Step 5: Complete
+        video.cloudinaryId = uploadResult.public_id;
+        video.streamUrl = uploadResult.secure_url;
+        video.thumbnails = [thumbnailUrl];
+        video.duration = duration;
+        video.resolution = resolution;
+        video.codec = 'h264';
+        video.status = 'safe';
+        video.processingProgress = 100;
+        video.processingStep = 'Complete';
         video.processedAt = new Date();
         await video.save();
 
-        io.to(ownerId.toString()).emit('processing:complete', {
-            videoId,
-            status: video.status,
-            video: video
-        });
-
-    } catch (error) {
-        console.error('Video processing failed:', error);
         if (io) {
             io.to(ownerId.toString()).emit('processing:complete', {
                 videoId,
-                status: 'error',
-                error: error.message
+                status: 'safe',
+                video,
+            });
+        }
+
+        console.log(`✅ Video ${videoId} processed successfully.`);
+
+    } catch (error) {
+        console.error(`❌ Video ${videoId} processing failed:`, error.message);
+
+        if (video) {
+            video.status = 'flagged';
+            video.processingStep = `Error: ${error.message}`;
+            await video.save();
+        }
+
+        if (io) {
+            io.to(ownerId.toString()).emit('processing:complete', {
+                videoId,
+                status: 'flagged',
+                error: error.message,
             });
         }
     }

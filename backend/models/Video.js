@@ -22,7 +22,7 @@ const videoSchema = new mongoose.Schema({
         required: true,
     },
     duration: {
-        type: Number, // Optional for now, assuming we might extract it later
+        type: Number,
         default: 0,
     },
     resolution: {
@@ -44,6 +44,14 @@ const videoSchema = new mongoose.Schema({
         enum: ['pending', 'processing', 'safe', 'flagged'],
         default: 'pending',
     },
+    processingProgress: {
+        type: Number,
+        default: 0,
+    },
+    processingStep: {
+        type: String,
+        default: '',
+    },
     ownerId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
@@ -53,8 +61,14 @@ const videoSchema = new mongoose.Schema({
         type: String,
         default: '',
     },
-    streamUrl: {
+    // Cloudinary fields
+    cloudinaryId: {
         type: String,
+        default: '',
+    },
+    streamUrl: {
+        type: String,   // Full HTTPS Cloudinary URL for playback
+        default: '',
     },
     uploadedAt: {
         type: Date,

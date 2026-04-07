@@ -1,7 +1,6 @@
 const User = require('../models/User');
 const Video = require('../models/Video');
-const fs = require('fs');
-const path = require('path');
+const cloudinary = require('../config/cloudinary');
 
 // @desc    Get all users in admin's organization
 // @route   GET /api/admin/users
@@ -48,7 +47,7 @@ const updateUserRole = async (req, res) => {
     }
 };
 
-// @desc    Delete any video in org
+// @desc    Delete any video in org (also removes from Cloudinary)
 // @route   DELETE /api/admin/videos/:id
 // @access  Private/Admin
 const deleteVideo = async (req, res) => {
@@ -64,19 +63,13 @@ const deleteVideo = async (req, res) => {
              return res.status(403).json({ message: 'Not authorized to delete this video' });
         }
 
-        // Remove from file system
-        const videoPath = path.join(__dirname, '..', 'uploads', video.ownerId.toString(), video.filename);
-        if (fs.existsSync(videoPath)) {
-             fs.unlinkSync(videoPath);
-        }
-
-        // Remove thumbnails
-        if(video.thumbnails) {
-            for (let thumb of video.thumbnails) {
-                const thumbPath = path.join(__dirname, '..', thumb);
-                 if (fs.existsSync(thumbPath)) {
-                     fs.unlinkSync(thumbPath);
-                }
+        // Delete from Cloudinary if cloudinaryId exists
+        if (video.cloudinaryId) {
+            try {
+                await cloudinary.uploader.destroy(video.cloudinaryId, { resource_type: 'video' });
+                console.log(`Deleted from Cloudinary: ${video.cloudinaryId}`);
+            } catch (cloudErr) {
+                console.error('Cloudinary delete error (non-fatal):', cloudErr.message);
             }
         }
 

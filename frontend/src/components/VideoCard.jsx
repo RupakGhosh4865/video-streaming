@@ -41,9 +41,9 @@ const VideoCard = ({ video }) => {
         >
             {/* Thumbnail Area */}
             <div className="relative aspect-video bg-slate-800/50 flex items-center justify-center overflow-hidden">
-                {video.thumbnails && video.thumbnails.length > 0 ? (
+                {video.thumbnails && video.thumbnails.length > 0 && video.thumbnails[0] ? (
                     <img 
-                        src={`${API_URL}${video.thumbnails[0]}`} 
+                        src={video.thumbnails[0].startsWith('http') ? video.thumbnails[0] : `${API_URL}${video.thumbnails[0]}`} 
                         alt="Thumbnail" 
                         className="w-full h-full object-cover"
                         onError={(e) => {

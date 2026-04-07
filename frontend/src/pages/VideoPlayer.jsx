@@ -6,7 +6,7 @@ import { getVideoById } from '../services/videoService';
 import CustomPlayer from '../components/CustomPlayer';
 import StatusBadge from '../components/StatusBadge';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 
 const VideoPlayerPage = () => {
     const { id } = useParams();
@@ -15,8 +15,7 @@ const VideoPlayerPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     
-    // Grab token for the stream URL
-    const token = localStorage.getItem('token');
+
 
     useEffect(() => {
         const fetchVideo = async () => {
@@ -80,8 +79,9 @@ const VideoPlayerPage = () => {
         );
     }
 
-    const streamUrl = `${API_URL}/api/videos/${video._id}/stream?token=${token}`;
-    const posterUrl = video.thumbnails && video.thumbnails.length > 0 ? `${API_URL}${video.thumbnails[0]}` : null;
+    // Use Cloudinary URL directly — no backend proxy needed
+    const streamUrl = video.streamUrl || '';
+    const posterUrl = video.thumbnails && video.thumbnails.length > 0 ? video.thumbnails[0] : null;
 
     return (
         <div className="min-h-screen bg-bg-dark text-text-primary p-4 md:p-8">
@@ -115,6 +115,14 @@ const VideoPlayerPage = () => {
                                 Please check back later when processing finishes to stream this video.
                             </p>
                          </div>
+                    ) : !streamUrl ? (
+                        <div className="w-full aspect-video bg-slate-900 border border-white/10 rounded-2xl flex flex-col items-center justify-center text-center p-8">
+                            <FileVideo className="w-12 h-12 text-slate-500 mb-4" />
+                            <h2 className="text-xl font-bold mb-2">No Video File Available</h2>
+                            <p className="text-text-secondary max-w-sm">
+                                This is a demo record with no actual video file. Please upload a real video through the Upload page to stream it here.
+                            </p>
+                        </div>
                     ) : (
                          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
                             <CustomPlayer src={streamUrl} poster={posterUrl} />

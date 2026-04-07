@@ -10,24 +10,21 @@ const seedData = async () => {
         await mongoose.connect(process.env.MONGODB_URI);
         console.log('Connected to MongoDB');
 
-        // Clear existing data safely if requested, or just append
+        // Clear existing data
         await User.deleteMany();
         await Organisation.deleteMany();
         await Video.deleteMany();
-
         console.log('Cleared existing data');
-
-        const hashedPassword = await bcrypt.hash('password123', 10);
 
         // 1. Create Org
         const orgId = new mongoose.Types.ObjectId();
         const mainOrg = await Organisation.create({
             _id: orgId,
             name: 'VideoVault Demo Corp',
-            ownerId: new mongoose.Types.ObjectId() // temporary
+            ownerId: new mongoose.Types.ObjectId() // temporary placeholder
         });
 
-        // 2. Create Users
+        // 2. Create Users — plain passwords, model pre-save hook hashes them
         const adminId = new mongoose.Types.ObjectId();
         
         await User.create([
@@ -35,21 +32,21 @@ const seedData = async () => {
                 _id: adminId,
                 name: 'Admin User',
                 email: 'admin@videovault.com',
-                password: hashedPassword,
+                password: 'password123',
                 role: 'admin',
                 orgId: mainOrg._id
             },
             {
                 name: 'Editor User',
                 email: 'editor@videovault.com',
-                password: hashedPassword,
+                password: 'password123',
                 role: 'editor',
                 orgId: mainOrg._id
             },
             {
                 name: 'Viewer User',
                 email: 'viewer@videovault.com',
-                password: hashedPassword,
+                password: 'password123',
                 role: 'viewer',
                 orgId: mainOrg._id
             }

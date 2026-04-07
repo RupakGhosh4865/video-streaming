@@ -1,27 +1,9 @@
 const multer = require('multer');
-const fs = require('fs');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
 
-// Storage configuration
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        // Ensure user is authenticated
-        const userId = req.user ? req.user._id.toString() : 'anonymous';
-        const dir = `./uploads/${userId}`;
-
-        // Create directory if it doesn't exist
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-
-        cb(null, dir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
-        cb(null, uniqueName);
-    },
-});
+// Use memory storage — file stays in RAM buffer, no disk writes
+// We stream it directly to Cloudinary from the buffer
+const storage = multer.memoryStorage();
 
 // File filter (videos only)
 const fileFilter = (req, file, cb) => {
@@ -37,7 +19,7 @@ const fileFilter = (req, file, cb) => {
     }
 };
 
-// Multer upload instance
+// Multer upload instance — 500MB limit
 const upload = multer({
     storage: storage,
     limits: {

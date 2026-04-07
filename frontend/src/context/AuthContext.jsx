@@ -1,5 +1,5 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
-import { register as registerApi, login as loginApi, logout as logoutApi } from '../services/authService';
+import authService, { register as registerApi, login as loginApi, logout as logoutApi } from '../services/authService';
 
 const AuthContext = createContext();
 
@@ -15,7 +15,7 @@ export const AuthProvider = ({ children }) => {
         const interceptor = authService.interceptors.response.use(
             (response) => response,
             (error) => {
-                if (error.response?.status === 401 && !error.config.url.includes('/auth/login')) {
+                if (error.response?.status === 401 && !error.config?.url?.includes('/auth/login')) {
                     logout();
                 }
                 return Promise.reject(error);
@@ -34,7 +34,7 @@ export const AuthProvider = ({ children }) => {
         return () => {
              authService.interceptors.response.eject(interceptor);
         };
-    }, [user]);
+    }, []);
 
     const register = async (userData) => {
         const data = await registerApi(userData);
