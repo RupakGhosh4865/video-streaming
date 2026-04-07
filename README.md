@@ -2,6 +2,21 @@
 
 VideoVault is a premium multi-tenant media streaming platform. It offers deep real-time background processing, RBAC administration isolations, Socket.io event emission progress mapping, and secure `HTTP 206` chunked range streaming.
 
+<img width="1912" height="948" alt="Image" src="https://github.com/user-attachments/assets/87557936-8d50-46bf-92a3-4467f41e6c04" />
+
+<img width="970" height="795" alt="Image" src="https://github.com/user-attachments/assets/ed7ad468-4ea7-4498-a559-6a501847c6e3" />
+
+<img width="1918" height="955" alt="Image" src="https://github.com/user-attachments/assets/ce1251ff-74a4-4179-b1f3-dd58520ff302" />
+
+<img width="1918" height="955" alt="Image" src="https://github.com/user-attachments/assets/e5224f31-96a8-49a0-91f7-83f40858f29d" />
+
+<img width="1914" height="1028" alt="Image" src="https://github.com/user-attachments/assets/4d990460-7190-4463-98c3-126415f86ce0" />
+
+<img width="1894" height="969" alt="Image" src="https://github.com/user-attachments/assets/31993915-a822-47b6-8411-796a7b616ddf" />
+
+
+
+
 ## 🚀 Quick Setup (Docker)
 
 1. Make sure you have Docker and Docker Compose installed.
